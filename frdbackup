@@ -1,0 +1,21 @@
+#! /usr/bin/php
+<?php
+
+use FRDBackup\CliCommands\AbstractCommand;
+
+require_once __DIR__ . "/vendor/autoload.php";
+include(__DIR__ . '/autoload.php');
+
+// Get options from command line
+$options = getopt(null,  ['command:']);
+$command = isset($options['command']) ? $options['command'] : null;
+switch($command) {
+    case 'export':
+        break;
+    case 'import':
+        break;
+    default:
+        echo 'You need to inform a valid command...' . PHP_EOL;
+        AbstractCommand::help();
+        die;
+}
