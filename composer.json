@@ -1,15 +1,23 @@
 {
-    "name": "GeovRodri/firebase-backup",
-    "description": "Lib para a realização de backup e restauração do realtime database",
-    "minimum-stability": "dev",
-    "authors": [
-        {
-            "name": "Geovany Rodrigues",
-            "email": "geovanyscv@gmail.com"
-        }
-    ],
-    "require": {
-		"php":">=5.6",
-        "ktamas77/firebase-php": "^2.2"
-	}
+  "name": "GeovRodri/firebase-backup",
+  "description": "Lib para a realização de backup e restauração do realtime database",
+  "minimum-stability": "dev",
+  "authors": [
+    {
+      "name": "Geovany Rodrigues",
+      "email": "geovanyscv@gmail.com"
+    }
+  ],
+  "require": {
+    "php":">=5.6",
+    "ktamas77/firebase-php": "^2.2",
+    "haydenpierce/class-finder": "dev-master",
+    "fostam/getopts": "dev-master"
+  },
+  "autoload": {
+    "psr-4": {
+      "FRDBackup\\": "src",
+      "FRDBackup\\CliCommands\\": "src/cli-commands"
+    }
+  }
 }

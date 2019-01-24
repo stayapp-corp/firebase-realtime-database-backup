@@ -1,21 +1,34 @@
 #! /usr/bin/php
 <?php
 
+use Fostam\GetOpts\Handler;
+use Fostam\GetOpts\Exception\MissingArgumentsException;
+use Fostam\GetOpts\Exception\InvalidArgumentException;
 use FRDBackup\CliCommands\AbstractCommand;
 
 require_once __DIR__ . "/vendor/autoload.php";
-include(__DIR__ . '/autoload.php');
+
+ini_set('memory_limit', '4G');
+$available_commands = AbstractCommand::get_available_commands();
 
 // Get options from command line
-$options = getopt(null,  ['command:']);
-$command = isset($options['command']) ? $options['command'] : null;
-switch($command) {
-    case 'export':
-        break;
-    case 'import':
-        break;
-    default:
-        echo 'You need to inform a valid command...' . PHP_EOL;
-        AbstractCommand::help();
-        die;
+$getopts = new Handler();
+$getopts->addArgument('command')->name('command')->required()->validator(function($value) {
+    global $available_commands;
+    return in_array($value, array_keys($available_commands));
+});
+$getopts->disableErrorHandling();
+$getopts->setExtraHelpText(AbstractCommand::help());
+try {
+    $getopts->parse([$argv[0], $argv[1]]);
+} catch(MissingArgumentsException $e) {
+    echo "You need to inform the command:" . PHP_EOL;
+    die(AbstractCommand::help());
+} catch(InvalidArgumentException $e) {
+    echo "You need to inform a valid command:" . PHP_EOL;
+    die(AbstractCommand::help());
 }
+
+$command = isset($getopts->get()['command']) ? $getopts->get()['command'] : null;
+$command_instance = new $available_commands[$command]();
+$command_instance->execute();

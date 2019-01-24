@@ -2,14 +2,16 @@
 
 namespace FRDBackup\CliCommands;
 
-abstract class Options {
-    const REQUIRED = 'REQUIRED';
-    const NOT_REQUIRED = 'NOT_REQUIRED';
-}
+use HaydenPierce\ClassFinder\ClassFinder;
+use ReflectionClass;
+use Fostam\GetOpts\Handler;
 
 abstract class AbstractCommand {
 
     static $PROJECT_URL_PATTERN = 'https://%s.firebaseio.com';
+
+    protected $command;
+    protected $soft_description;
 
     protected $project_id;
     protected $project_url;
@@ -20,39 +22,95 @@ abstract class AbstractCommand {
     abstract function command_execution($opts);
 
     static function help() {
-        echo "------------ Firebase Realtime Database Backup Tool ------------" . PHP_EOL .
-            "- Available commands:" . PHP_EOL .
-            "--> export: This command exports (creates a backup) of the database." . PHP_EOL .
-            "--> import: This command imports (restores) a exported backup into the database." . PHP_EOL .
-            "-----------------------------------------------------------------" . PHP_EOL;
+        $help =  '------------ Firebase Realtime Database Backup Tool ------------' . PHP_EOL .
+            '- Available commands:' . PHP_EOL;
+
+        foreach(AbstractCommand::get_available_commands() as $command => $class) {
+            $command_instance = new $class();
+            $help .= '--> ' . $command_instance->soft_description . PHP_EOL;
+        }
+
+        $help .=  '------------------------------------------------------------------' . PHP_EOL . PHP_EOL;
+        return $help;
     }
 
-    protected function get_parameters() {
-        return ['s_opts' => [], 'l_opts' => []];
-    }
-    
-    private function get_opts() {
-        $default_parameters = ['project_id:' => Options::REQUIRED, 'project_key:' => Options::REQUIRED];
-        $command_parameters = $this->get_parameters();
-        $s_opts = is_array($command_parameters['s_opts']) ? array_keys($command_parameters['s_opts']) : null;
-        $l_opts = is_array($command_parameters['l_opts']) ? array_keys($command_parameters['l_opts']) : [];
-        $l_opts = array_merge(array_keys($default_parameters), $l_opts);
+    private static function get_command_classes() {
+        try {
+            $command_classes = ClassFinder::getClassesInNamespace(__NAMESPACE__);
+        } catch (\Exception $e) {
+            $command_classes = [];
+        }
 
-        $all_opts = array_merge($command_parameters['s_opts'], $command_parameters['l_opts'], $default_parameters);
-        $options = getopt($s_opts, $l_opts);
-        
-        // Validate required options
-        foreach(array_merge($s_opts, $l_opts) as $opt) {
-            $opt_key = str_replace(':', '', $opt);
-            if(!isset($options[$opt_key]) && $all_opts[$opt] == Options::REQUIRED) {
-                die('Required option: \'' . $opt_key . '\' was not informed');
+        return $command_classes;
+    }
+
+    static function get_available_commands() {
+        $command_classes = AbstractCommand::get_command_classes();
+        $available_commands = [];
+        foreach($command_classes as $class) {
+            $reflection_class = null;
+            try {
+                $reflection_class = new ReflectionClass($class);
+            } catch (\Exception $e) {
+                continue;
+            }
+
+            if ($reflection_class && $reflection_class->isAbstract()) {
+                continue;
+            }
+
+            $command_instance = $reflection_class->newInstance();
+            if (!is_subclass_of($command_instance, AbstractCommand::class)) {
+                continue;
+            }
+
+            $class_command = $reflection_class->getDefaultProperties()['command'];
+            if ($class_command) {
+                $available_commands[$class_command] = $class;
             }
         }
-        
-        $this->project_id = $options['project_id'];
-        $this->project_key = $options['project_key'];
+
+        return $available_commands;
+    }
+
+    private function get_opts() {
+        global $argv;
+        $pargs = $argv;
+        array_splice($pargs, 1, 1);
+
+        $getopts = $this->command_opts();
+        $getopts->parse($pargs);
+        $options = $getopts->get();
+
+        $this->project_id = isset($options['project_id']) ? $options['project_id'] : null;
+        $this->project_key = isset($options['project_key']) ? $options['project_key'] : null;
+        if(!$this->project_id || !$this->project_key) {
+            die('Your have not specified project_id or project_key' . PHP_EOL);
+        }
+
         $this->project_url = sprintf(AbstractCommand::$PROJECT_URL_PATTERN, $this->project_id);
         return $options;
+    }
+    
+    protected function command_opts() {
+        $getopts = new Handler();
+        $not_empty_validator = function($value) { return !empty($value); };
+        $getopts->addOption('project_id')
+            ->short('p')
+            ->long('project_id')
+            ->argument('project_id')
+            ->description('Firebase project ID')
+            ->validator($not_empty_validator)
+            ->required();
+        $getopts->addOption('project_key')
+            ->short('k')
+            ->long('project_key')
+            ->argument('project_key')
+            ->description('Firebase private key to access real time database using rest api.')
+            ->validator($not_empty_validator)
+            ->required();
+
+        return $getopts;
     }
 
     public function execute() {
