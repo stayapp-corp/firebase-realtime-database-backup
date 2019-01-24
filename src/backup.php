@@ -1,7 +1,7 @@
 #! /usr/bin/php
 <?php
 
-require_once __DIR__ . "../vendor/autoload.php";
+require_once __DIR__ . "./vendor/autoload.php";
 
 use Firebase\FirebaseLib;
 
@@ -23,19 +23,27 @@ if (!file_exists('backup')) {
 
 array_map('unlink', glob("backup/*"));
 
-function getData($path) {
+function getData($path, $showLog=false) {
     global $firebase;
+    if ($showLog) echo PHP_EOL . 'Searching path: ' . $path . PHP_EOL;
 
     $data = json_decode($firebase->get($path), true);
     $data = (isset($data['error']) && $data['error'] === 'Payload is too large') ? [] : $data;
 
     if (empty($data)) {
+        $tryCount = 0;
         do {
             $data = json_decode($firebase->get($path, ['shallow' => 'true']), true);
             $data = (isset($data['error']) && $data['error'] === 'Payload is too large') ? [] : $data;
+            $tryCount++;
+
+            if ($tryCount === 10) {
+                trigger_error(($path . " not exists."), E_USER_WARNING);
+                return;
+            }
         } while(empty($data));
 
-        getDataChucked($path, $data, 1000);
+        getDataChucked($path, $data, 1000, true);
     } else {
         generateFile($path, $data);
     }
@@ -47,11 +55,14 @@ function getData($path) {
  * @param $path
  * @param $data
  * @param $size
+ * @param $showLog
  */
-function getDataChucked($path, &$data, $size) {
+function getDataChucked($path, &$data, $size, $showLog = false) {
     $size = $size > count($data) ? count($data) : $size;
     $chuckedArray = array_chunk($data, $size, true);
+    $countData = count($data);
     $data = null;
+    if ($showLog) echo 'Processing ' . $countData . ' path ' . $path . PHP_EOL;
 
     for($i = 0; $i < count($chuckedArray); $i++){
         $chucked = $chuckedArray[$i];
@@ -60,7 +71,12 @@ function getDataChucked($path, &$data, $size) {
         $partData = getPaths($path, $keys);
 
         if (empty($partData)) {
-            $chuckedSize = ($size > 100) ? 100 : ($size > 10) ? 10 : 1;
+            $partData = getPaths($path, $keys);
+        }
+
+        if (empty($partData)) {
+            $lessNumbers = array_filter([1000, 500, 200, 100, 50, 10, 5, 1], function ($x) use ($size) { return $x < $size; });
+            $chuckedSize = max($lessNumbers);
             if ($chuckedSize === 1) {
                 foreach ($keys as $key) {
                     $keyPath = $path . '/' . $key;
@@ -75,6 +91,8 @@ function getDataChucked($path, &$data, $size) {
         }
 
         $partData = null;
+        $countData -= $size;
+        if ($showLog) echo 'Remains ' . $countData . PHP_EOL;
     }
 
     $chuckedArray = null;
@@ -111,7 +129,7 @@ function generateFile($path, $data)
 
     do {
         try {
-            $chuckedData = array_chunk($data, (1000/$splitSize));
+            $chuckedData = array_chunk($data, (1000/$splitSize), true);
             for($i = 0; $i < count($chuckedData); $i++) {
                 $md5Pth = md5(uniqid(""));
                 $filePath = "backup/${md5Pth}.json";
@@ -135,7 +153,7 @@ function generateFile($path, $data)
     } while (!$successfully);
 }
 
-getData('/');
+getData('/users_datas', true);
 
 $metadataFile = fopen('backup/metadata.json', 'w');
 fwrite($metadataFile, json_encode($metadata));

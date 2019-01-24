@@ -36,9 +36,16 @@ class BackupProcessor {
         $data = (isset($data['error']) && $data['error'] === 'Payload is too large') ? [] : $data;
 
         if (empty($data)) {
+            $tryCount = 0;
             do {
                 $data = json_decode($this->firebase->get($path, ['shallow' => 'true']), true);
                 $data = (isset($data['error']) && $data['error'] === 'Payload is too large') ? [] : $data;
+                $tryCount++;
+
+                if ($tryCount === 10) {
+                    trigger_error($path . " not exists.", E_USER_WARNING);
+                    return;
+                }
             } while(empty($data));
 
             $this->getDataChucked($path, $data, 1000);
@@ -53,6 +60,8 @@ class BackupProcessor {
         $size = $size > count($data) ? count($data) : $size;
         $chuckedArray = array_chunk($data, $size, true);
         $data = null;
+        $countData = count($data);
+        echo 'Processing ' . $countData . ' path ' . $path;
 
         for($i = 0; $i < count($chuckedArray); $i++){
             $chucked = $chuckedArray[$i];
@@ -61,7 +70,12 @@ class BackupProcessor {
             $partData = $this->getPaths($path, $keys);
 
             if (empty($partData)) {
-                $chuckedSize = ($size > 100) ? 100 : ($size > 10) ? 10 : 1;
+                $partData = getPaths($path, $keys);
+            }
+
+            if (empty($partData)) {
+                $lessNumbers = array_filter([1000, 500, 200, 100, 50, 10, 5, 1], function ($x) use ($size) { return $x < $size; });
+                $chuckedSize = max($lessNumbers);
                 if ($chuckedSize === 1) {
                     foreach ($keys as $key) {
                         $keyPath = $path . '/' . $key;
@@ -76,6 +90,8 @@ class BackupProcessor {
             }
 
             $partData = null;
+            $countData -= $size;
+            echo 'Remains ' . $countData;
         }
 
         $chuckedArray = null;
@@ -99,7 +115,7 @@ class BackupProcessor {
 
         do {
             try {
-                $chuckedData = array_chunk($data, (1000/$splitSize));
+                $chuckedData = array_chunk($data, (1000/$splitSize), true);
                 for($i = 0; $i < count($chuckedData); $i++) {
                     $md5Pth = md5(uniqid(""));
                     $filePath = $this->backup_dir . "/${md5Pth}.json";
