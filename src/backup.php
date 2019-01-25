@@ -89,7 +89,7 @@ function getData($path) {
  * @param $itemsPerPage
  * @return mixed
  */
-function getPathsPaginated($path, $key = null, $itemsPerPage = 2) {
+function getPathsPaginated($path, $key = null, $itemsPerPage = 1000) {
     global $firebase, $intelligentIPP, $maxIpp, $minIpp;
 
     if (!isset($intelligentIPP[$path])) {

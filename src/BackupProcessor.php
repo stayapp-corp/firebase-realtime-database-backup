@@ -93,7 +93,7 @@ class BackupProcessor {
      * @param $itemsPerPage
      * @return mixed
      */
-    private function getPathsPaginated($path, $key = null, $itemsPerPage = 2) {
+    private function getPathsPaginated($path, $key = null, $itemsPerPage = 1000) {
         if (!isset($this->intelligentIPP[$path])) {
             $this->intelligentIPP[$path] = ["ipp" => min($itemsPerPage, $this->maxIpp), "success" => 0];
         } else {
