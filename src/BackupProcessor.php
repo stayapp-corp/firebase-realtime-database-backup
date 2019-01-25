@@ -7,7 +7,11 @@ use Firebase\FirebaseLib;
 class BackupProcessor {
 
     private $firebase;
-    private $metadata;
+    private $metadata = [];
+    private $intelligentIPP = [];
+    private $shallowTree = [];
+    private $maxIpp = 1000;
+    private $minIpp = 2;
 
     function __construct($firebase_url, $firebase_token) {
         $this->backup_dir = __DIR__ . "/../backups";
@@ -31,82 +35,114 @@ class BackupProcessor {
         array_map('unlink', glob($this->backup_dir . "/*"));
     }
 
-    private function getData($path) {
-        $data = json_decode($this->firebase->get($path), true);
-        $data = (isset($data['error']) && $data['error'] === 'Payload is too large') ? [] : $data;
+    function getData($path) {
+        $processedCount = 0;
+        $firstKey = null;
+        do {
+            $pageData = $this->getPathsPaginated($path, $firstKey);
+            $firstKey = $pageData['lastKey'];
 
-        if (empty($data)) {
-            $tryCount = 0;
-            do {
-                $data = json_decode($this->firebase->get($path, ['shallow' => 'true']), true);
-                $data = (isset($data['error']) && $data['error'] === 'Payload is too large') ? [] : $data;
-                $tryCount++;
+            if (isset($pageData['error']) && $pageData['error'] === 'go-deeper') {
+                $shallowTries = 0;
+                if (!isset($this->shallowTree[$path])) {
+                    do {
+                        $shallowData = json_decode($this->firebase->get($path, ['shallow' => 'true']), true);
+                        $shallowTries++;
 
-                if ($tryCount === 10) {
-                    trigger_error($path . " not exists.", E_USER_WARNING);
-                    return;
+                        if ($shallowTries === 10) {
+                            error_log('Could not get database shallow data', E_USER_ERROR);
+                            die;
+                        }
+                    } while (empty($shallowData));
+
+                    $this->shallowTree[$path] = array_keys($shallowData);
                 }
-            } while(empty($data));
 
-            $this->getDataChucked($path, $data, 1000);
-        } else {
-            $this->generateFile($path, $data);
-        }
-
-        $data = null;
-    }
-
-    private function getDataChucked($path, &$data, $size) {
-        $size = $size > count($data) ? count($data) : $size;
-        $chuckedArray = array_chunk($data, $size, true);
-        $data = null;
-        $countData = count($data);
-        echo 'Processing ' . $countData . ' path ' . $path;
-
-        for($i = 0; $i < count($chuckedArray); $i++){
-            $chucked = $chuckedArray[$i];
-            $chuckedArray[$i] = null;
-            $keys = array_keys($chucked);
-            $partData = $this->getPaths($path, $keys);
-
-            if (empty($partData)) {
-                $partData = getPaths($path, $keys);
-            }
-
-            if (empty($partData)) {
-                $lessNumbers = array_filter([1000, 500, 200, 100, 50, 10, 5, 1], function ($x) use ($size) { return $x < $size; });
-                $chuckedSize = max($lessNumbers);
-                if ($chuckedSize === 1) {
-                    foreach ($keys as $key) {
-                        $keyPath = $path . '/' . $key;
-                        $this->getData($keyPath);
+                $nextKey = null;
+                if ($firstKey) {
+                    $firstProcessedIdx = array_search($firstKey, $this->shallowTree[$path]);
+                    if (count($this->shallowTree[$path]) > ($firstProcessedIdx + 1)) {
+                        $nextKey = $this->shallowTree[$path][$firstProcessedIdx + 1];
+                    } else {
+                        $pageData['isLastPage'] = true;
                     }
-                    $keys = null;
                 } else {
-                    $this->getDataChucked($path, $chucked, $chuckedSize);
+                    $nextKey = $this->shallowTree[$path][0];
+                }
+
+                if ($nextKey) {
+                    $keyPath = $path . '/' . $nextKey;
+                    $this->getData($keyPath);
+                    $firstKey = $nextKey;
+                    $processedCount += 1;
                 }
             } else {
+                $partData = $pageData['data'];
+
                 $this->generateFile($path, $partData);
+                $processedCount += count($partData);
             }
 
-            $partData = null;
-            $countData -= $size;
-            echo 'Remains ' . $countData;
-        }
-
-        $chuckedArray = null;
+            echo 'Processed ' . $processedCount . ' entries.' . PHP_EOL;
+        } while (!$pageData['isLastPage']);
     }
 
-    private function getPaths($path, $keys) {
-        $query = [
-            'orderBy' => '"$key"',
-            'startAt' => '"' . $keys[0] . '"',
-            'endAt' => '"' . $keys[(count($keys) - 1)] . '"'
-        ];
+    /**
+     * @param $path
+     * @param $key
+     * @param $itemsPerPage
+     * @return mixed
+     */
+    private function getPathsPaginated($path, $key = null, $itemsPerPage = 2) {
+        if (!isset($this->intelligentIPP[$path])) {
+            $this->intelligentIPP[$path] = ["ipp" => min($itemsPerPage, $this->maxIpp), "success" => 0];
+        } else {
+            $itemsPerPage = $this->intelligentIPP[$path]['ipp'];
+        }
+        $newItemsPerPage = null;
 
-        $partData = json_decode($this->firebase->get($path, $query), true);
-        $partData = (isset($partData['error']) && $partData['error'] === 'Payload is too large') ? [] : $partData;
-        return $partData;
+        do {
+            $itemsPerPage = ($newItemsPerPage ? $newItemsPerPage : $itemsPerPage);
+            echo 'Getting ' . $path . ' with key ' . $key . ' and items per page: ' . $itemsPerPage . PHP_EOL;
+            $query = [
+                'orderBy' => '"$key"',
+                'limitToFirst' => $itemsPerPage
+            ];
+
+            if (!empty($key)) {
+                $query['startAt'] = '"' . $key . '"';
+            }
+
+            $newItemsPerPage = max($this->minIpp, ceil($itemsPerPage / 2));
+            $partData = json_decode($this->firebase->get($path, $query), true);
+            if (isset($partData['error'])) {
+                print_r($partData);
+            }
+            $partData = (isset($partData['error']) && $partData['error'] === 'Payload is too large') ? [] : $partData;
+
+            if ($itemsPerPage === $this->minIpp) {
+                return ['error' => 'go-deeper', 'lastKey' => $key];
+            }
+        } while(empty($partData));
+
+        $this->intelligentIPP[$path]['success'] += 1;
+        if ($this->intelligentIPP[$path]['success'] > 5) {
+            $this->intelligentIPP[$path]['success'] = 0;
+            $this->intelligentIPP[$path]['ipp'] = min($this->maxIpp, floor($itemsPerPage * 1.2));
+        } else if ($itemsPerPage != $this->intelligentIPP[$path]['ipp']) {
+            $this->intelligentIPP[$path]['success'] = 0;
+            $this->intelligentIPP[$path]['ipp'] = $itemsPerPage;
+        }
+
+        $countData = count($partData);
+        $lastKey = array_keys($partData)[($countData - 1)];
+        $isLastPage = ($countData < $itemsPerPage || ($countData === 1 && $itemsPerPage === 1 && $lastKey === $key));
+
+        if (!empty($key)) {
+            array_shift($partData);
+        }
+
+        return ['data' => $partData, 'isLastPage' => $isLastPage, 'lastKey' => $lastKey];
     }
 
     private function generateFile($path, $data) {
@@ -133,7 +169,7 @@ class BackupProcessor {
                 }
 
                 $successfully = true;
-            } catch (Exception $e) {
+            } catch (\Exception $e) {
                 $splitSize++;
             }
         } while (!$successfully);
