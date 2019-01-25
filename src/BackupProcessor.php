@@ -56,6 +56,8 @@ class BackupProcessor {
                     } while (empty($shallowData));
 
                     $this->shallowTree[$path] = array_keys($shallowData);
+                    $shallowData = null;
+                    $shallowTries = null;
                 }
 
                 $nextKey = null;
@@ -85,6 +87,9 @@ class BackupProcessor {
 
             echo 'Processed ' . $processedCount . ' entries.' . PHP_EOL;
         } while (!$pageData['isLastPage']);
+
+        $pageData = null;
+        $firstKey = null;
     }
 
     /**
@@ -100,6 +105,7 @@ class BackupProcessor {
             $itemsPerPage = $this->intelligentIPP[$path]['ipp'];
         }
         $newItemsPerPage = null;
+        $partData = null;
 
         do {
             $itemsPerPage = ($newItemsPerPage ? $newItemsPerPage : $itemsPerPage);
