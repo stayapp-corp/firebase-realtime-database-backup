@@ -15,6 +15,10 @@ if(!isset($options['url']) || !isset($options['token'])) {
 ini_set('memory_limit', '4G');
 $firebase = new FirebaseLib($options['url'], $options['token']);
 $metadata = [];
+$intelligentIPP = [];
+$shallowTree = [];
+$maxIpp = 1000;
+$minIpp = 2;
 
 // Removing old backup
 if (!file_exists('backup')) {
@@ -23,97 +27,120 @@ if (!file_exists('backup')) {
 
 array_map('unlink', glob("backup/*"));
 
-function getData($path, $showLog=false) {
-    global $firebase;
-    if ($showLog) echo PHP_EOL . 'Searching path: ' . $path . PHP_EOL;
-
-    $data = json_decode($firebase->get($path), true);
-    $data = (isset($data['error']) && $data['error'] === 'Payload is too large') ? [] : $data;
-
-    if (empty($data)) {
-        $tryCount = 0;
-        do {
-            $data = json_decode($firebase->get($path, ['shallow' => 'true']), true);
-            $data = (isset($data['error']) && $data['error'] === 'Payload is too large') ? [] : $data;
-            $tryCount++;
-
-            if ($tryCount === 10) {
-                trigger_error(($path . " not exists."), E_USER_WARNING);
-                return;
-            }
-        } while(empty($data));
-
-        getDataChucked($path, $data, 1000, true);
-    } else {
-        generateFile($path, $data);
-    }
-
-    $data = null;
-}
-
 /**
  * @param $path
- * @param $data
- * @param $size
- * @param $showLog
  */
-function getDataChucked($path, &$data, $size, $showLog = false) {
-    $size = $size > count($data) ? count($data) : $size;
-    $chuckedArray = array_chunk($data, $size, true);
-    $countData = count($data);
-    $data = null;
-    if ($showLog) echo 'Processing ' . $countData . ' path ' . $path . PHP_EOL;
+function getData($path) {
+    global $firebase, $shallowTree;
+    $processedCount = 0;
+    $firstKey = null;
+    do {
+        $pageData = getPathsPaginated($path, $firstKey);
+        $firstKey = $pageData['lastKey'];
 
-    for($i = 0; $i < count($chuckedArray); $i++){
-        $chucked = $chuckedArray[$i];
-        $chuckedArray[$i] = null;
-        $keys = array_keys($chucked);
-        $partData = getPaths($path, $keys);
+        if (isset($pageData['error']) && $pageData['error'] === 'go-deeper') {
+            $shallowTries = 0;
+            if (!isset($shallowTree[$path])) {
+                do {
+                    $shallowData = json_decode($firebase->get($path, ['shallow' => 'true']), true);
+                    $shallowTries++;
 
-        if (empty($partData)) {
-            $partData = getPaths($path, $keys);
-        }
+                    if ($shallowTries === 10) {
+                        error_log('Could not get database shallow data', E_USER_ERROR);
+                        die;
+                    }
+                } while (empty($shallowData));
 
-        if (empty($partData)) {
-            $lessNumbers = array_filter([1000, 500, 200, 100, 50, 10, 5, 1], function ($x) use ($size) { return $x < $size; });
-            $chuckedSize = max($lessNumbers);
-            if ($chuckedSize === 1) {
-                foreach ($keys as $key) {
-                    $keyPath = $path . '/' . $key;
-                    getData($keyPath);
+                $shallowTree[$path] = array_keys($shallowData);
+            }
+
+            $nextKey = null;
+            if ($firstKey) {
+                $firstProcessedIdx = array_search($firstKey, $shallowTree[$path]);
+                if (count($shallowTree[$path]) > ($firstProcessedIdx + 1)) {
+                    $nextKey = $shallowTree[$path][$firstProcessedIdx + 1];
+                } else {
+                    $pageData['isLastPage'] = true;
                 }
-                $keys = null;
             } else {
-                getDataChucked($path, $chucked, $chuckedSize);
+                $nextKey = $shallowTree[$path][0];
+            }
+
+            if ($nextKey) {
+                $keyPath = $path . '/' . $nextKey;
+                getData($keyPath);
+                $firstKey = $nextKey;
+                $processedCount += 1;
             }
         } else {
+            $partData = $pageData['data'];
+
             generateFile($path, $partData);
+            $processedCount += count($partData);
         }
 
-        $partData = null;
-        $countData -= $size;
-        if ($showLog) echo 'Remains ' . $countData . PHP_EOL;
-    }
-
-    $chuckedArray = null;
+        echo 'Processed ' . $processedCount . ' entries.' . PHP_EOL;
+    } while (!$pageData['isLastPage']);
 }
 
 /**
  * @param $path
- * @param $keys
+ * @param $key
+ * @param $itemsPerPage
  * @return mixed
  */
-function getPaths($path, $keys) {
-    global $firebase;
-    $query = [
-        'orderBy' => '"$key"',
-        'startAt' => '"' . $keys[0] . '"',
-        'endAt' => '"' . $keys[(count($keys) - 1)] . '"'
-    ];
+function getPathsPaginated($path, $key = null, $itemsPerPage = 2) {
+    global $firebase, $intelligentIPP, $maxIpp, $minIpp;
 
-    $partData = json_decode($firebase->get($path, $query), true);
-    $partData = (isset($partData['error']) && $partData['error'] === 'Payload is too large') ? [] : $partData;
-    return $partData;
+    if (!isset($intelligentIPP[$path])) {
+        $intelligentIPP[$path] = ["ipp" => min($itemsPerPage, $maxIpp), "success" => 0];
+    } else {
+        $itemsPerPage = $intelligentIPP[$path]['ipp'];
+    }
+    $newItemsPerPage = null;
+
+    do {
+        $itemsPerPage = ($newItemsPerPage ? $newItemsPerPage : $itemsPerPage);
+        echo 'Getting ' . $path . ' with key ' . $key . ' and items per page: ' . $itemsPerPage . PHP_EOL;
+        $query = [
+            'orderBy' => '"$key"',
+            'limitToFirst' => $itemsPerPage
+        ];
+
+        if (!empty($key)) {
+            $query['startAt'] = '"' . $key . '"';
+        }
+
+        $newItemsPerPage = max($minIpp, ceil($itemsPerPage / 2));
+        $partData = json_decode($firebase->get($path, $query), true);
+        if (isset($partData['error'])) {
+            print_r($partData);
+        }
+        $partData = (isset($partData['error']) && $partData['error'] === 'Payload is too large') ? [] : $partData;
+
+        if ($itemsPerPage === $minIpp) {
+            return ['error' => 'go-deeper', 'lastKey' => $key];
+        }
+    } while(empty($partData));
+
+    $intelligentIPP[$path]['success'] += 1;
+    if ($intelligentIPP[$path]['success'] > 5) {
+        $intelligentIPP[$path]['success'] = 0;
+        $intelligentIPP[$path]['ipp'] = min($maxIpp, floor($itemsPerPage * 1.2));
+    } else if ($itemsPerPage != $intelligentIPP[$path]['ipp']) {
+        $intelligentIPP[$path]['success'] = 0;
+        $intelligentIPP[$path]['ipp'] = $itemsPerPage;
+    }
+
+    $countData = count($partData);
+    $lastKey = array_keys($partData)[($countData - 1)];
+    $isLastPage = ($countData < $itemsPerPage || ($countData === 1 && $itemsPerPage === 1 && $lastKey === $key));
+
+    if (!empty($key)) {
+        array_shift($partData);
+    }
+
+    return ['data' => $partData, 'isLastPage' => $isLastPage, 'lastKey' => $lastKey];
 }
 
 /**
@@ -153,7 +180,7 @@ function generateFile($path, $data)
     } while (!$successfully);
 }
 
-getData('/users_datas', true);
+getData('/');
 
 $metadataFile = fopen('backup/metadata.json', 'w');
 fwrite($metadataFile, json_encode($metadata));
