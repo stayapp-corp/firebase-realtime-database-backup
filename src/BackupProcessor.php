@@ -3,39 +3,60 @@
 namespace FRDBackup;
 
 use Firebase\FirebaseLib;
+use FRDBackup\Exceptions\BackupFailureException;
 
 class BackupProcessor {
 
+    private static $MIN_IPP = 2;
+
     private $firebase;
     private $metadata = [];
-    private $intelligentIPP = [];
-    private $shallowTree = [];
-    private $maxIpp = 1000;
-    private $minIpp = 2;
+    private $intelligent_IPP = [];
+    private $shallow_tree = [];
+    private $max_ipp = 1000;
+    private $temp_dir;
+    private $backup_file;
 
-    function __construct($firebase_url, $firebase_token) {
-        $this->backup_dir = __DIR__ . "/../backups";
+    function __construct($firebase_url, $firebase_token, $temp_dir=null, $backup_file=null, $max_ipp=1000) {
+        if (empty($temp_dir)) $temp_dir = __DIR__ . "/../temp";
+        if (empty($backup_file)) {
+            $project_id = explode(".", explode("//", $firebase_url)[1])[0];
+            $backup_file = __DIR__ . "/../backups/" . $project_id . "-" . date(DATE_ATOM);
+        }
+
+        $this->temp_dir = $temp_dir;
+        $this->backup_file = $backup_file;
+        $this->max_ipp = $max_ipp;
         $this->firebase = new FirebaseLib($firebase_url, $firebase_token);
-        $this->reset_backup_dir();
     }
 
+    /**
+     * @throws BackupFailureException
+     */
     function do_backup() {
+        $this->reset_backup_dir();
         $this->metadata = [];
         $this->getData('/');
 
-        $metadataFile = fopen($this->backup_dir . '/metadata.json', 'w');
+        $metadataFile = fopen($this->temp_dir . '/metadata.json', 'w');
         fwrite($metadataFile, json_encode($this->metadata, JSON_PRETTY_PRINT));
         fclose($metadataFile);
+        $this->generateCompressedBackup();
     }
 
     private function reset_backup_dir() {
-        if (!file_exists($this->backup_dir)) {
-            mkdir($this->backup_dir);
+        if (!file_exists($this->temp_dir)) {
+            mkdir($this->temp_dir);
         }
-        array_map('unlink', glob($this->backup_dir . "/*"));
+
+        array_map('unlink', glob($this->temp_dir . "/*"));
     }
 
-    function getData($path) {
+    /**
+     * @param $path
+     * @throws BackupFailureException
+     */
+    private function getData($path) {
         $processedCount = 0;
         $firstKey = null;
         $preserveLastKey = false;
@@ -46,32 +67,31 @@ class BackupProcessor {
             $preserveLastKey = false;
 
             if (isset($pageData['error']) && $pageData['error'] === 'go-deeper') {
-                if (!isset($this->shallowTree[$path])) {
+                if (!isset($this->shallow_tree[$path])) {
                     $shallowTries = 0;
                     do {
                         unset($shallowData);
                         $shallowData = json_decode($this->firebase->get($path, ['shallow' => 'true']), true);
                         $shallowTries++;
                         if ($shallowTries === 10) {
-                            error_log('Could not get database shallow data', E_USER_ERROR);
-                            die;
+                            throw new BackupFailureException('Could not get database shallow data');
                         }
                     } while (empty($shallowData));
 
-                    $this->shallowTree[$path] = array_keys($shallowData);
-                    sort($this->shallowTree[$path]);
+                    $this->shallow_tree[$path] = array_keys($shallowData);
+                    sort($this->shallow_tree[$path]);
                     unset($shallowData);
                     unset($shallowTries);
                 }
 
-                if(!is_array($this->shallowTree[$path]) || (count($this->shallowTree[$path]) < 1 && $firstKey)) {
+                if(!is_array($this->shallow_tree[$path]) || (count($this->shallow_tree[$path]) < 1 && $firstKey)) {
                     $isLastPage = true;
                 } else {
                     $nextKeyIdx = null;
-                    $shallowTreeCount = count($this->shallowTree[$path]);
+                    $shallowTreeCount = count($this->shallow_tree[$path]);
 
                     if ($firstKey) {
-                        $firstProcessedIdx = array_search($firstKey, $this->shallowTree[$path]);
+                        $firstProcessedIdx = array_search($firstKey, $this->shallow_tree[$path]);
                         if ($shallowTreeCount > ($firstProcessedIdx + 1)) {
                             $nextKeyIdx = $firstProcessedIdx + 1;
                         } else {
@@ -82,9 +102,9 @@ class BackupProcessor {
                     }
 
                     if ($nextKeyIdx !== null) {
-                        $this->getData($path . '/' . $this->shallowTree[$path][$nextKeyIdx]);
+                        $this->getData($path . '/' . $this->shallow_tree[$path][$nextKeyIdx]);
                         if ($shallowTreeCount > ($nextKeyIdx + 1)) {
-                            $firstKey = $this->shallowTree[$path][($nextKeyIdx+1)];
+                            $firstKey = $this->shallow_tree[$path][($nextKeyIdx+1)];
                             $preserveLastKey = true;
                         } else {
                             $isLastPage = true;
@@ -118,10 +138,10 @@ class BackupProcessor {
      * @return mixed
      */
     private function getPathsPaginated($path, $key = null, $preserveLastKey = false, $itemsPerPage = 1000) {
-        if (!isset($this->intelligentIPP[$path])) {
-            $this->intelligentIPP[$path] = ["ipp" => min($itemsPerPage, $this->maxIpp), "success" => 0];
+        if (!isset($this->intelligent_IPP[$path])) {
+            $this->intelligent_IPP[$path] = ["ipp" => min($itemsPerPage, $this->max_ipp), "success" => 0];
         } else {
-            $itemsPerPage = $this->intelligentIPP[$path]['ipp'];
+            $itemsPerPage = $this->intelligent_IPP[$path]['ipp'];
         }
         $newItemsPerPage = null;
 
@@ -138,22 +158,22 @@ class BackupProcessor {
                 $query['startAt'] = '"' . $key . '"';
             }
 
-            $newItemsPerPage = max($this->minIpp, ceil($itemsPerPage / 2));
+            $newItemsPerPage = max(self::$MIN_IPP, ceil($itemsPerPage / 2));
             $partData = json_decode($this->firebase->get($path, $query), true);
             $partData = (isset($partData['error']) && $partData['error'] === 'Payload is too large') ? [] : $partData;
             $refreshSmallerPiece = empty($partData);
-            if ($itemsPerPage === $this->minIpp && $refreshSmallerPiece) {
+            if ($itemsPerPage === self::$MIN_IPP && $refreshSmallerPiece) {
                 return ['error' => 'go-deeper', 'lastKey' => $key];
             }
         } while($refreshSmallerPiece);
 
-        $this->intelligentIPP[$path]['success'] += 1;
-        if ($this->intelligentIPP[$path]['success'] > 5) {
-            $this->intelligentIPP[$path]['success'] = 0;
-            $this->intelligentIPP[$path]['ipp'] = min($this->maxIpp, ceil($itemsPerPage * 1.2));
-        } else if ($itemsPerPage != $this->intelligentIPP[$path]['ipp']) {
-            $this->intelligentIPP[$path]['success'] = 0;
-            $this->intelligentIPP[$path]['ipp'] = $itemsPerPage;
+        $this->intelligent_IPP[$path]['success'] += 1;
+        if ($this->intelligent_IPP[$path]['success'] > 5) {
+            $this->intelligent_IPP[$path]['success'] = 0;
+            $this->intelligent_IPP[$path]['ipp'] = min($this->max_ipp, ceil($itemsPerPage * 1.2));
+        } else if ($itemsPerPage != $this->intelligent_IPP[$path]['ipp']) {
+            $this->intelligent_IPP[$path]['success'] = 0;
+            $this->intelligent_IPP[$path]['ipp'] = $itemsPerPage;
         }
 
         $countData = count($partData);
@@ -168,32 +188,44 @@ class BackupProcessor {
     }
 
     private function generateFile($path, $data) {
-        $successfully = false;
-        $splitSize = 1;
+        $md5Pth = md5(uniqid(""));
+        $filePath = $this->temp_dir . "/${md5Pth}.json";
 
-        do {
-            try {
-                $chuckedData = array_chunk($data, (1000/$splitSize), true);
-                for($i = 0; $i < count($chuckedData); $i++) {
-                    $md5Pth = md5(uniqid(""));
-                    $filePath = $this->backup_dir . "/${md5Pth}.json";
-                    $this->metadata[$filePath] = $path;
+        if (!isset($this->metadata[$path])) {
+            $this->metadata[$path] = [];
+        }
 
-                    $file = fopen($filePath, 'w');
-                    $chucked = $chuckedData[$i];
-                    $chuckedData[$i] = null;
-                    fwrite($file, json_encode($chucked));
+        $this->metadata[$path][] = $filePath;
 
-                    fclose($file);
-                    $md5Pth = null;
-                    $filePath = null;
-                    $file = null;
-                }
+        $file = fopen($filePath, 'w');
+        $dataJson = json_encode($data);
+        fwrite($file, $dataJson);
+        fclose($file);
 
-                $successfully = true;
-            } catch (\Exception $e) {
-                $splitSize++;
-            }
-        } while (!$successfully);
+        unset($md5Pth);
+        unset($filePath);
+        unset($file);
+        unset($dataJson);
+        unset($data);
+        unset($path);
+    }
+
+    private function generateCompressedBackup() {
+        $backup_dir = dirname($this->backup_file);
+        $file_name = preg_replace( '/[^a-zA-Z0-9]+/', '-', pathinfo($this->backup_file)['filename']);
+        if (!file_exists($backup_dir)) {
+            mkdir($backup_dir, 0777, true);
+        }
+
+        $tmp_backup_tar = $backup_dir . "/${file_name}.tar";
+        $tarFile = new \PharData($tmp_backup_tar);
+        $tarFile->buildFromDirectory($this->temp_dir);
+        $tarFile->compress(\Phar::GZ);
+        unset($tarFile);
+        sleep(5);
+
+        unlink($tmp_backup_tar);
+        array_map('unlink', glob($this->temp_dir . "/*"));
+        rmdir($this->temp_dir);
     }
 }

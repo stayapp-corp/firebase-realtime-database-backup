@@ -16,13 +16,39 @@ class ExportCommand extends AbstractCommand {
         $getopts = parent::command_opts();
 
         // Here you can extend command parameters...
+        $getopts->addOption('temp_dir')
+            ->short('t')
+            ->long('temp_dir')
+            ->argument('temp_dir')
+            ->description('Path to write temporary files.')
+            ->defaultValue(__DIR__ . "/../../temp");
+
+        $getopts->addOption('max_ipp')
+            ->short('i')
+            ->long('max_ipp')
+            ->argument('max_ipp')
+            ->description('Max items per firebase path')
+            ->defaultValue(1000);
+
+        $getopts->addOption('output_file')
+            ->short('o')
+            ->long('output_file')
+            ->argument('output_file')
+            ->description('Path to save the compressed backup file.')
+            ->defaultValue(__DIR__ . "/../../backups/BACKUP-" . date(DATE_ATOM));
 
         return $getopts;
     }
 
     function command_execution($opts) {
-        echo "Exporting " . $this->project_url . " reatime database..." . PHP_EOL;
-        $backupProcessor = new BackupProcessor($this->project_url, $this->project_key);
-        $backupProcessor->do_backup();
+        echo "Exporting " . $this->project_url . " realtime database..." . PHP_EOL;
+        $backupProcessor = new BackupProcessor($this->project_url, $this->project_key, $opts['temp_dir'],
+            $opts['output_file'], $opts['max_ipp']);
+
+        try {
+            $backupProcessor->do_backup();
+        } catch (\Exception $e) {
+            error_log($e->getMessage(), E_USER_ERROR);
+        }
     }
 }

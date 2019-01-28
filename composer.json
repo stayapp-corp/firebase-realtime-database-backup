@@ -21,7 +21,8 @@
   "autoload": {
     "psr-4": {
       "FRDBackup\\": "src",
-      "FRDBackup\\CliCommands\\": "src/cli-commands"
+      "FRDBackup\\CliCommands\\": "src/cli-commands",
+      "FRDBackup\\Exceptions\\": "src/exceptions"
     }
   }
 }
