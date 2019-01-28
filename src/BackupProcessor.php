@@ -38,17 +38,20 @@ class BackupProcessor {
     function getData($path) {
         $processedCount = 0;
         $firstKey = null;
+        $preserveLastKey = false;
         do {
-            $pageData = $this->getPathsPaginated($path, $firstKey);
+            $pageData = $this->getPathsPaginated($path, $firstKey, $preserveLastKey);
             $firstKey = $pageData['lastKey'];
+            $isLastPage = isset($pageData['isLastPage']) ? $pageData['isLastPage'] : false;
+            $preserveLastKey = false;
 
             if (isset($pageData['error']) && $pageData['error'] === 'go-deeper') {
-                $shallowTries = 0;
                 if (!isset($this->shallowTree[$path])) {
+                    $shallowTries = 0;
                     do {
+                        unset($shallowData);
                         $shallowData = json_decode($this->firebase->get($path, ['shallow' => 'true']), true);
                         $shallowTries++;
-
                         if ($shallowTries === 10) {
                             error_log('Could not get database shallow data', E_USER_ERROR);
                             die;
@@ -56,58 +59,73 @@ class BackupProcessor {
                     } while (empty($shallowData));
 
                     $this->shallowTree[$path] = array_keys($shallowData);
-                    $shallowData = null;
-                    $shallowTries = null;
+                    unset($shallowData);
+                    unset($shallowTries);
                 }
 
-                $nextKey = null;
-                if ($firstKey) {
-                    $firstProcessedIdx = array_search($firstKey, $this->shallowTree[$path]);
-                    if (count($this->shallowTree[$path]) > ($firstProcessedIdx + 1)) {
-                        $nextKey = $this->shallowTree[$path][$firstProcessedIdx + 1];
-                    } else {
-                        $pageData['isLastPage'] = true;
-                    }
+                if(!is_array($this->shallowTree[$path]) || (count($this->shallowTree[$path]) < 1 && $firstKey)) {
+                    $isLastPage = true;
                 } else {
-                    $nextKey = $this->shallowTree[$path][0];
-                }
+                    $nextKeyIdx = null;
+                    $shallowTreeCount = count($this->shallowTree[$path]);
 
-                if ($nextKey) {
-                    $keyPath = $path . '/' . $nextKey;
-                    $this->getData($keyPath);
-                    $firstKey = $nextKey;
-                    $processedCount += 1;
+                    if ($firstKey) {
+                        $firstProcessedIdx = array_search($firstKey, $this->shallowTree[$path]);
+                        if ($shallowTreeCount > ($firstProcessedIdx + 1)) {
+                            $nextKeyIdx = $firstProcessedIdx + 1;
+                        } else {
+                            $isLastPage = true;
+                        }
+                    } else {
+                        $nextKeyIdx = 0;
+                    }
+
+                    if ($nextKeyIdx !== null) {
+                        $this->getData($path . '/' . $this->shallowTree[$path][$nextKeyIdx]);
+                        if ($shallowTreeCount > ($nextKeyIdx + 1)) {
+                            $firstKey = $this->shallowTree[$path][($nextKeyIdx+1)];
+                            $preserveLastKey = true;
+                        } else {
+                            $isLastPage = true;
+                        }
+                        $processedCount += 1;
+                    }
+
+                    unset($nextKeyIdx);
+                    unset($shallowTreeCount);
                 }
             } else {
                 $partData = $pageData['data'];
-
                 $this->generateFile($path, $partData);
                 $processedCount += count($partData);
             }
 
             echo 'Processed ' . $processedCount . ' entries.' . PHP_EOL;
-        } while (!$pageData['isLastPage']);
-
-        $pageData = null;
-        $firstKey = null;
+            unset($pageData);
+        } while (!$isLastPage);
+        unset($processedCount);
+        unset($firstKey);
+        unset($preserveLastKey);
+        unset($isLastPage);
     }
 
     /**
      * @param $path
      * @param $key
-     * @param $itemsPerPage
+     * @param bool $preserveLastKey
+     * @param int $itemsPerPage
      * @return mixed
      */
-    private function getPathsPaginated($path, $key = null, $itemsPerPage = 1000) {
+    private function getPathsPaginated($path, $key = null, $preserveLastKey = false, $itemsPerPage = 1000) {
         if (!isset($this->intelligentIPP[$path])) {
             $this->intelligentIPP[$path] = ["ipp" => min($itemsPerPage, $this->maxIpp), "success" => 0];
         } else {
             $itemsPerPage = $this->intelligentIPP[$path]['ipp'];
         }
         $newItemsPerPage = null;
-        $partData = null;
 
         do {
+            unset($partData);
             $itemsPerPage = ($newItemsPerPage ? $newItemsPerPage : $itemsPerPage);
             echo 'Getting ' . $path . ' with key ' . $key . ' and items per page: ' . $itemsPerPage . PHP_EOL;
             $query = [
@@ -121,20 +139,17 @@ class BackupProcessor {
 
             $newItemsPerPage = max($this->minIpp, ceil($itemsPerPage / 2));
             $partData = json_decode($this->firebase->get($path, $query), true);
-            if (isset($partData['error'])) {
-                print_r($partData);
-            }
             $partData = (isset($partData['error']) && $partData['error'] === 'Payload is too large') ? [] : $partData;
-
-            if ($itemsPerPage === $this->minIpp) {
+            $refreshSmallerPiece = empty($partData);
+            if ($itemsPerPage === $this->minIpp && $refreshSmallerPiece) {
                 return ['error' => 'go-deeper', 'lastKey' => $key];
             }
-        } while(empty($partData));
+        } while($refreshSmallerPiece);
 
         $this->intelligentIPP[$path]['success'] += 1;
         if ($this->intelligentIPP[$path]['success'] > 5) {
             $this->intelligentIPP[$path]['success'] = 0;
-            $this->intelligentIPP[$path]['ipp'] = min($this->maxIpp, floor($itemsPerPage * 1.2));
+            $this->intelligentIPP[$path]['ipp'] = min($this->maxIpp, ceil($itemsPerPage * 1.2));
         } else if ($itemsPerPage != $this->intelligentIPP[$path]['ipp']) {
             $this->intelligentIPP[$path]['success'] = 0;
             $this->intelligentIPP[$path]['ipp'] = $itemsPerPage;
@@ -142,9 +157,9 @@ class BackupProcessor {
 
         $countData = count($partData);
         $lastKey = array_keys($partData)[($countData - 1)];
-        $isLastPage = ($countData < $itemsPerPage || ($countData === 1 && $itemsPerPage === 1 && $lastKey === $key));
+        $isLastPage = ($countData < $itemsPerPage || ($countData === 1 && $lastKey === $key));
 
-        if (!empty($key)) {
+        if (!empty($key) && $preserveLastKey !== true) {
             array_shift($partData);
         }
 
