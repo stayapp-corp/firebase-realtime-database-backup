@@ -59,6 +59,7 @@ class BackupProcessor {
                     } while (empty($shallowData));
 
                     $this->shallowTree[$path] = array_keys($shallowData);
+                    sort($this->shallowTree[$path]);
                     unset($shallowData);
                     unset($shallowTries);
                 }
