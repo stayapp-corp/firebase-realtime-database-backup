@@ -13,6 +13,7 @@ Available on [Packagist](https://packagist.org/packages/GeovRodri/firebase-realt
 ## Description
 
 Unfortunately, the firebase backup service is only today available for Blaze plan and you can not do backups more than one time per day.
+
 The manual export button available on cli (that uses the rest endpoint) doesn't work for bigger databases. This library permits to export and import the firebase realtime-database using the rest api and a division strategy to enable the capability to export and import bigger databases.
 
 ### Adding this to your project using Composer
@@ -36,11 +37,11 @@ More info about Composer at [getcomposer.org](http://getcomposer.org).
 
 There are some optional parameters:
 
-| Parameter | Description | Default value |
-| --- | --- | --- |
-| --temp_dir | Temporary directory to save all downloaded database files before creating .tar.gz backup file | ./temp |
-| --max_ipp | The maximum size of items per page that some query to the database will use. Note that if you specify a very large number and you have nodes that can't get this quantity of samples, the script can take a long time to finish because it will be decrease the IPP size until it can get the data. | 1000 |
-| --output_file | The sender antenna CSI measure that will be shown in the graph | ./backups/BACKUP-<ACTUAL_DATE> |
+| Long parameter | short parameter | Description | Default value |
+| --- | --- | --- | --- |
+| temp_dir | t | Temporary directory to save all downloaded database files before creating .tar.gz backup file | ./temp |
+| max_ipp | i | The maximum size of items per page that some query to the database will use. Note that if you specify a very large number and you have nodes that can't get this quantity of samples, the script can take a long time to finish because it will be decrease the IPP size until it can get the data. | 1000 |
+| output_file | o | The sender antenna CSI measure that will be shown in the graph | ./backups/BACKUP-<ACTUAL_DATE> |
 
 #### Database Import
 
