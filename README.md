@@ -1,14 +1,14 @@
 # Firebase Realtime-database backup client
 
-[![Current version](https://img.shields.io/packagist/v/GeovRodri/firebase-realtime-database-backup.svg)](https://packagist.org/packages/GeovRodri/firebase-realtime-database-backup)
-[![Supported PHP version](https://img.shields.io/packagist/php-v/GeovRodri/firebase-realtime-database-backup.svg)]()
-[![Total Downloads](https://img.shields.io/packagist/dt/GeovRodri/firebase-realtime-database-backup.svg)](https://packagist.org/packages/GeovRodri/firebase-realtime-database-backup/stats)
+[![Current version](https://img.shields.io/packagist/v/geov-rodri/firebase-realtime-database-backup.svg)](https://packagist.org/packages/geov-rodri/firebase-realtime-database-backup)
+[![Supported PHP version](https://img.shields.io/packagist/php-v/geov-rodri/firebase-realtime-database-backup.svg)]()
+[![Total Downloads](https://img.shields.io/packagist/dt/geov-rodri/firebase-realtime-database-backup.svg)](https://packagist.org/packages/geov-rodri/firebase-realtime-database-backup/stats)
 [![License](https://img.shields.io/github/license/GeovRodri/firebase-realtime-database-backup.svg)](https://github.com/GeovRodri/firebase-realtime-database-backup/blob/master/LICENSE)
 
 [![GitHub stars](https://img.shields.io/github/stars/GeovRodri/firebase-realtime-database-backup.svg?label=Stars&style=social)](https://github.com/GeovRodri/firebase-realtime-database-backup/stargazers)
 [![GitHub watchers](https://img.shields.io/github/watchers/GeovRodri/firebase-realtime-database-backup.svg?label=Watch&style=social)](https://github.com/GeovRodri/firebase-realtime-database-backup/watchers)
 
-Available on [Packagist](https://packagist.org/packages/GeovRodri/firebase-realtime-database-backup).
+Available on [Packagist](https://packagist.org/packages/geov-rodri/firebase-realtime-database-backup).
 
 ## Description
 
@@ -22,7 +22,7 @@ In some situations, is a good idea to install this library in your project and u
 
 ```
 $ cd <your_project>
-$ composer require GeovRodri/firebase-realtime-database-backup
+$ composer require geov-rodri/firebase-realtime-database-backup
 ```
 
 More info about Composer at [getcomposer.org](http://getcomposer.org).

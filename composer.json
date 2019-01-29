@@ -1,5 +1,5 @@
 {
-  "name": "GeovRodri/firebase-realtime-database-backup",
+  "name": "geov-rodri/firebase-realtime-database-backup",
   "description": "Firebase Realtime database library to backup and restore small and larger projects.",
   "homepage": "https://github.com/GeovRodri/firebase-realtime-database-backup/",
   "license": "MIT",
