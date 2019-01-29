@@ -20,6 +20,7 @@ $getopts->addArgument('command')->name('command')->required()->validator(functio
 $getopts->disableErrorHandling();
 $getopts->setExtraHelpText(AbstractCommand::help());
 try {
+    $command_args = [(isset($argv[0]) ? $argv[0] : ''), (isset($argv[1]) ? $argv[1] : '')];
     $getopts->parse([$argv[0], $argv[1]]);
 } catch(MissingArgumentsException $e) {
     echo "You need to inform the command:" . PHP_EOL;
