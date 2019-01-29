@@ -41,7 +41,7 @@ There are some optional parameters:
 | --- | --- | --- | --- |
 | temp_dir | t | Temporary directory to save all downloaded database files before creating .tar.gz backup file | ./temp |
 | max_ipp | i | The maximum size of items per page that some query to the database will use. Note that if you specify a very large number and you have nodes that can't get this quantity of samples, the script can take a long time to finish because it will be decrease the IPP size until it can get the data. | 1000 |
-| output_file | o | The sender antenna CSI measure that will be shown in the graph | ./backups/BACKUP-<ACTUAL_DATE> |
+| output_file | o | Compressed backup (.tar.gz) output file path  | ./backups/BACKUP-<ACTUAL_DATE> |
 
 #### Database Import
 
