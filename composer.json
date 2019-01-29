@@ -1,6 +1,6 @@
 {
   "name": "GeovRodri/firebase-realtime-database-backup",
-  "description": "Firebase Realtime database library to backup and restore the small and largers projects.",
+  "description": "Firebase Realtime database library to backup and restore small and larger projects.",
   "homepage": "https://github.com/GeovRodri/firebase-realtime-database-backup/",
   "license": "MIT",
   "keywords": [
