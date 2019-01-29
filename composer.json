@@ -1,14 +1,22 @@
 {
-  "name": "GeovRodri/firebase-backup",
-  "description": "Lib para a realização de backup e restauração do realtime database",
-  "minimum-stability": "dev",
+  "name": "GeovRodri/firebase-realtime-database-backup",
+  "description": "Firebase Realtime database library to backup and restore the small and largers projects.",
+  "homepage": "https://github.com/GeovRodri/firebase-realtime-database-backup/",
+  "license": "MIT",
+  "keywords": [
+    "firebase",
+    "backup",
+    "realtime-database",
+    "cli"
+  ],
+  "version": "1.0.0",
   "authors": [
     {
       "name": "Geovany Rodrigues",
       "email": "geovanyscv@gmail.com"
     },
     {
-      "name": "Bruno Soares",
+      "name": "Bruno Soares da Silva",
       "email": "brunosoares.inf@gmail.com"
     }
   ],
