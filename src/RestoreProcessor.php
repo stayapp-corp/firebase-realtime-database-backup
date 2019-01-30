@@ -14,6 +14,7 @@ class RestoreProcessor
 {
 
     private $firebase;
+    private $max_ipp = 1000;
 
     /**
      * RestoreProcessor constructor.
@@ -45,21 +46,62 @@ class RestoreProcessor
         $gzFile = new \PharData($this->backup_file);
         $tarFile = $gzFile->decompress(\Phar::GZ);
         $tarFile->extractTo($this->temp_dir);
-        unlink($gzFile->getPath());
+        $path = $tarFile->getPath();
+        unset($gzFile);
+        unset($tarFile);
+        sleep(5);
+        unlink($path);
     }
 
     function do_restore() {
-        $this->reset_backup_dir();
-        $this->decompressedBackup();
+        // $this->reset_backup_dir();
+        // $this->decompressedBackup();
 
         $metadata = json_decode(file_get_contents($this->temp_dir . '/metadata.json'), true);
 
         foreach ($metadata as $pathFb => $paths) {
-            echo 'Restoring ' . $pathFb . ' firebase path';
             foreach ($paths as $path) {
-                $data = json_decode(file_get_contents("backup/${$path}.json"), true);
-                $this->firebase->update($pathFb, $data);
+                $data = json_decode(file_get_contents($this->temp_dir . "/" . $path), true);
+                $this->save_path($pathFb, $data);
             }
         }
+    }
+
+    private function save_path($pathFb, &$data, $itemsPerPage = 1000) {
+        $newItemsPerPage = null;
+        $countSuccess = 0;
+
+        do {
+            $itemsPerPage = min($itemsPerPage, count($data));
+            $itemsPerPage = ($newItemsPerPage ? $newItemsPerPage : $itemsPerPage);
+            $splitData = array_slice($data, 0, $itemsPerPage, true);
+
+            echo 'Restoring ' . $pathFb . ' firebase path by step ' . $itemsPerPage . PHP_EOL;
+            $result = $this->firebase->update($pathFb, $splitData);
+
+            if ($result === false) {
+                $newItemsPerPage = max(1, ceil($itemsPerPage / 2));
+                $countSuccess = 0;
+
+                if ($itemsPerPage === 1) {
+                    echo 'Error updating firebase path ' . $pathFb . ' deeper.' . PHP_EOL;
+
+                    $keys = array_keys($splitData);
+                    foreach ($keys as $key) {
+                        $this->save_path(($pathFb . '/' . $key), $splitData[$key]);
+                    }
+                    $result = true;
+                }
+            }
+
+            if ($result !== false) {
+                $countSuccess++;
+                $data = array_diff_key($data, $splitData);
+                if ($countSuccess === 5) {
+                    $countSuccess = 0;
+                    $newItemsPerPage = min($this->max_ipp, ceil($itemsPerPage * 1.2));
+                }
+            }
+        } while(!empty($data));
     }
 }

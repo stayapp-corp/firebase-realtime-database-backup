@@ -195,10 +195,10 @@ class BackupProcessor {
             $this->metadata[$path] = [];
         }
 
-        $this->metadata[$path][] = $filePath;
+        $this->metadata[$path][] = "${md5Pth}.json";
 
         $file = fopen($filePath, 'w');
-        $dataJson = json_encode($data);
+        $dataJson = json_encode($data, JSON_PRETTY_PRINT);
         fwrite($file, $dataJson);
         fclose($file);
 
