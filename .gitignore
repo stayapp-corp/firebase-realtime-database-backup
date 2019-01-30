@@ -2,3 +2,5 @@
 /vendor/
 /backups/
 /temp/
+/.DS_Store
+/composer.lock
