@@ -1,6 +1,6 @@
 # Firebase Realtime-database backup client
 
-[![Current version](https://img.shields.io/packagist/v/geov-rodri/firebase-realtime-database-backup.svg)](https://packagist.org/packages/geov-rodri/firebase-realtime-database-backup)
+[![Current version](https://img.shields.io/github/release/GeovRodri/firebase-realtime-database-backup.svg)](https://packagist.org/packages/geov-rodri/firebase-realtime-database-backup)
 [![Supported PHP version](https://img.shields.io/packagist/php-v/geov-rodri/firebase-realtime-database-backup.svg)]()
 [![Total Downloads](https://img.shields.io/packagist/dt/geov-rodri/firebase-realtime-database-backup.svg)](https://packagist.org/packages/geov-rodri/firebase-realtime-database-backup/stats)
 [![License](https://img.shields.io/github/license/GeovRodri/firebase-realtime-database-backup.svg)](https://github.com/GeovRodri/firebase-realtime-database-backup/blob/master/LICENSE)
