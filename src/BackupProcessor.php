@@ -27,7 +27,7 @@ class BackupProcessor {
         $this->temp_dir = $temp_dir;
         $this->backup_file = $backup_file;
         if ($max_ipp && is_integer($max_ipp)) {
-            $this->max_ipp = $max_ipp;   
+            $this->max_ipp = $max_ipp;
         }
         $this->firebase = new FirebaseLib($firebase_url, $firebase_token);
     }
@@ -39,7 +39,7 @@ class BackupProcessor {
     function do_backup($root_start_ipp=null) {
         $this->reset_backup_dir();
         $this->metadata = [];
-        
+
         $root_path = '/';
         if ($root_start_ipp) {
             $this->intelligent_IPP[$root_path] = ["ipp" => min($root_start_ipp, $this->max_ipp), "success" => 0];
@@ -99,12 +99,14 @@ class BackupProcessor {
                     $shallowTreeCount = count($this->shallow_tree[$path]);
 
                     if ($firstKey) {
+                        $subNextKeyIdx = ($pageData['preserveLastKey'] === true) ? -1 : 0;
                         $firstProcessedIdx = array_search($firstKey, $this->shallow_tree[$path]);
-                        if ($shallowTreeCount > ($firstProcessedIdx + 1)) {
-                            $nextKeyIdx = $firstProcessedIdx + 1;
+                        if ($shallowTreeCount > ($firstProcessedIdx + 1 + $subNextKeyIdx)) {
+                            $nextKeyIdx = $firstProcessedIdx + 1 + $subNextKeyIdx;
                         } else {
                             $isLastPage = true;
                         }
+                        unset($subNextKeyIdx);
                     } else {
                         $nextKeyIdx = 0;
                     }
@@ -171,7 +173,9 @@ class BackupProcessor {
             $partData = (isset($partData['error']) && $partData['error'] === 'Payload is too large') ? [] : $partData;
             $refreshSmallerPiece = empty($partData);
             if ($itemsPerPage === self::$MIN_IPP && $refreshSmallerPiece) {
-                return ['error' => 'go-deeper', 'lastKey' => $key];
+                $this->intelligent_IPP[$path]['success'] = 0;
+                $this->intelligent_IPP[$path]['ipp'] = $itemsPerPage;
+                return ['error' => 'go-deeper', 'lastKey' => $key, 'preserveLastKey' => $preserveLastKey];
             }
         } while($refreshSmallerPiece);
 
@@ -206,7 +210,7 @@ class BackupProcessor {
         $this->metadata[$path][] = "${md5Pth}.json";
 
         $file = fopen($filePath, 'w');
-        $dataJson = json_encode($data, JSON_PRETTY_PRINT);
+        $dataJson = json_encode($data);
         fwrite($file, $dataJson);
         fclose($file);
 
