@@ -17,7 +17,7 @@ class BackupProcessor {
     private $temp_dir;
     private $backup_file;
 
-    function __construct($firebase_url, $firebase_token, $temp_dir=null, $backup_file=null, $max_ipp=1000) {
+    function __construct($firebase_url, $firebase_token, $temp_dir=null, $backup_file=null, $max_ipp=null) {
         if (empty($temp_dir)) $temp_dir = __DIR__ . "/../temp";
         if (empty($backup_file)) {
             $project_id = explode(".", explode("//", $firebase_url)[1])[0];
@@ -26,17 +26,25 @@ class BackupProcessor {
 
         $this->temp_dir = $temp_dir;
         $this->backup_file = $backup_file;
-        $this->max_ipp = $max_ipp;
+        if ($max_ipp && is_integer($max_ipp)) {
+            $this->max_ipp = $max_ipp;   
+        }
         $this->firebase = new FirebaseLib($firebase_url, $firebase_token);
     }
 
     /**
+     * @param $root_start_ipp
      * @throws BackupFailureException
      */
-    function do_backup() {
+    function do_backup($root_start_ipp=null) {
         $this->reset_backup_dir();
         $this->metadata = [];
-        $this->getData('/');
+        
+        $root_path = '/';
+        if ($root_start_ipp) {
+            $this->intelligent_IPP[$root_path] = ["ipp" => min($root_start_ipp, $this->max_ipp), "success" => 0];
+        }
+        $this->getData($root_path);
 
         $metadataFile = fopen($this->temp_dir . '/metadata.json', 'w');
         fwrite($metadataFile, json_encode($this->metadata, JSON_PRETTY_PRINT));
