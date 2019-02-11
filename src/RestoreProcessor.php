@@ -54,8 +54,8 @@ class RestoreProcessor
     }
 
     function do_restore() {
-        // $this->reset_backup_dir();
-        // $this->decompressedBackup();
+        $this->reset_backup_dir();
+        $this->decompressedBackup();
 
         $metadata = json_decode(file_get_contents($this->temp_dir . '/metadata.json'), true);
 
