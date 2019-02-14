@@ -54,7 +54,7 @@ class BackupProcessor {
 
     private function reset_backup_dir() {
         if (!file_exists($this->temp_dir)) {
-            mkdir($this->temp_dir);
+            mkdir($this->temp_dir, 0777, true);
         }
 
         array_map('unlink', glob($this->temp_dir . "/*"));
