@@ -37,6 +37,13 @@ class ExportCommand extends AbstractCommand {
             ->description('Path to save the compressed backup file.')
             ->defaultValue(__DIR__ . "/../../backups/BACKUP-" . date(DATE_ATOM));
 
+        $getopts->addOption('root_start_ipp')
+            ->short('r')
+            ->long('root_start_ipp')
+            ->argument('root_start_ipp')
+            ->description('Start IPP of root ("/") path.')
+            ->defaultValue(1000);
+
         return $getopts;
     }
 
@@ -46,7 +53,7 @@ class ExportCommand extends AbstractCommand {
             $opts['output_file'], $opts['max_ipp']);
 
         try {
-            $backupProcessor->do_backup();
+            $backupProcessor->do_backup($opts['root_start_ipp']);
         } catch (\Exception $e) {
             error_log($e->getMessage(), E_USER_ERROR);
         }

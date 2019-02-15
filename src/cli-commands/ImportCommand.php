@@ -30,6 +30,19 @@ class ImportCommand extends AbstractCommand {
     }
 
     function command_execution($opts) {
+        echo "\033[1;33m------------------------- WARNING -------------------------" . PHP_EOL .
+            "- Be sure that you have un-deploy your cloud functions    -" . PHP_EOL .
+            "- before import database.                                 -" . PHP_EOL .
+            "- Otherwise your functions will be triggered.             -" . PHP_EOL .
+            "-----------------------------------------------------------\033[0m" . PHP_EOL;
+
+        echo 'Do you want to proceed? (yes/no) ';
+        $line = trim(substr(fgets(STDIN), 0, (PHP_OS == 'WINNT' ? 4 : 3)));
+
+        if ($line !== 'yes') {
+            die;
+        }
+
         echo "Importing " . $this->project_url . " realtime database..." . PHP_EOL;
         try {
             $restoreProcessor = new RestoreProcessor($this->project_url, $this->project_key, $opts['backup_file']);
