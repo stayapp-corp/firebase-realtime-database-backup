@@ -193,7 +193,7 @@ class BackupProcessor {
         $isLastPage = ($countData < $itemsPerPage || ($countData === 1 && $lastKey === $key));
 
         if (!empty($key) && $preserveLastKey !== true) {
-            array_shift($partData);
+            $partData = array_slice($partData, 1, NULL, true);
         }
 
         return ['data' => $partData, 'isLastPage' => $isLastPage, 'lastKey' => $lastKey];
